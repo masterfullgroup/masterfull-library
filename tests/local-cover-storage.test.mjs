@@ -5,7 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { EventEmitter } from 'node:events';
-import { checkPublished, localCoverStoragePlugin, pagesUrl, saveCover, verifyAdminToken } from '../scripts/local-cover-storage-plugin.mjs';
+import { checkPublished, localCoverStoragePlugin, pagesUrl, publishCoverBatch, saveBulkCover, saveCover, verifyAdminToken } from '../scripts/local-cover-storage-plugin.mjs';
+import { matchCoverFiles } from '../src/services/books/bulkCoverMatching.mjs';
 
 const projectId = 'demo-masterfull-library-rules';
 const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
@@ -73,6 +74,28 @@ test('saves supported image bytes to a unique safe path without overwriting', as
   assert.deepEqual(await readFile(path.join(root, first.localPath)), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 1, 2]));
 });
 
+test('bulk cover saves are content-addressed and retries do not create duplicate files', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'masterfull-cover-bulk-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const payload = { fileName: '978013-123456.png', contentType: 'image/png', dataBase64: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 1, 2]).toString('base64') };
+  const first = await saveBulkCover(root, payload, 'https://masterfullgroup.github.io/masterfull-library/');
+  const retry = await saveBulkCover(root, payload, 'https://masterfullgroup.github.io/masterfull-library/');
+  assert.equal(first.filename, retry.filename);
+  assert.equal(first.duplicate, false);
+  assert.equal(retry.duplicate, true);
+  assert.match(first.filename, /^[a-f0-9]{64}\.png$/);
+  assert.equal(first.sha256, first.filename.slice(0, 64));
+});
+
+test('bulk matching only uses exact ISBN or exact book ID and flags multiple images as ambiguous', () => {
+  const books = [{ id: 'book-1', isbn: '978-0-13-123456-7', title: 'Physics' }, { id: 'book-2', isbn: '9780000000002', title: 'Other' }];
+  const result = matchCoverFiles([{ name: 'ISBN_9780131234567.jpg' }, { name: 'book-1.png' }, { name: 'some-physics-book.jpg' }], books);
+  assert.deepEqual(result.map((entry) => entry.status), ['ambiguous', 'ambiguous', 'unmatched']);
+  const exact = matchCoverFiles([{ name: 'book-2.webp' }], books);
+  assert.equal(exact[0].status, 'matched');
+  assert.equal(exact[0].book.id, 'book-2');
+});
+
 test('rejects MIME/signature mismatch, malformed payload and files over 2 MB', async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'masterfull-cover-'));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -112,7 +135,7 @@ test('does not report publication unless Pages responds with an image', async (t
   const saved = await saveCover(root, { fileName: 'cover.png', contentType: 'image/png', dataBase64: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).toString('base64') }, 'https://masterfullgroup.github.io/masterfull-library/');
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (_url, options) => {
-    assert.equal(options.method, 'HEAD');
+    assert.equal(options.method, 'GET');
     return new Response(null, { status: 404, headers: { 'content-type': 'text/html' } });
   };
   try {
@@ -122,4 +145,53 @@ test('does not report publication unless Pages responds with an image', async (t
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test('confirms Pages serves exactly the local image bytes', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'masterfull-cover-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const bytes = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 2, 3]);
+  const saved = await saveBulkCover(root, { fileName: 'cover.png', contentType: 'image/png', dataBase64: bytes.toString('base64') }, 'https://masterfullgroup.github.io/masterfull-library/');
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_url, options) => { assert.equal(options.method, 'GET'); return new Response(bytes, { status: 200, headers: { 'content-type': 'image/png' } }); };
+  try {
+    const result = await checkPublished(root, saved.filename, 'https://masterfullgroup.github.io/masterfull-library/');
+    assert.equal(result.published, true);
+    assert.equal(result.sha256, saved.sha256);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('batch Git publication stages, commits and pushes only validated cover paths', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'masterfull-cover-git-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const saved = await saveBulkCover(root, { fileName: 'cover.png', contentType: 'image/png', dataBase64: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).toString('base64') }, 'https://masterfullgroup.github.io/masterfull-library/');
+  const calls = [];
+  const runGit = async (args) => {
+    calls.push(args);
+    if (args[0] === 'branch') return { stdout: 'main\n' };
+    if (args[0] === 'remote') return { stdout: 'https://github.com/masterfullgroup/masterfull-library.git\n' };
+    if (args[0] === 'rev-parse') return { stdout: 'same-commit\n' };
+    return { stdout: '' };
+  };
+  const result = await publishCoverBatch(root, [saved.filename], { runGit });
+  assert.equal(result.published, true);
+  assert.deepEqual(calls.slice(-3), [
+    ['add', '--', `public/portadas/${saved.filename}`],
+    ['commit', '--only', '-m', 'Publicar 1 portada(s)', '--', `public/portadas/${saved.filename}`],
+    ['push', 'origin', 'main'],
+  ]);
+});
+
+test('batch Git publication refuses non-main, wrong repository and unpushed history', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'masterfull-cover-git-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const saved = await saveBulkCover(root, { fileName: 'cover.png', contentType: 'image/png', dataBase64: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).toString('base64') }, 'https://masterfullgroup.github.io/masterfull-library/');
+  const run = (branch, remote, heads) => async (args) => {
+    if (args[0] === 'branch') return { stdout: `${branch}\n` };
+    if (args[0] === 'remote') return { stdout: `${remote}\n` };
+    return { stdout: `${heads.shift()}\n` };
+  };
+  await assert.rejects(publishCoverBatch(root, [saved.filename], { runGit: run('feature', 'https://github.com/masterfullgroup/masterfull-library.git', []) }), /rama main/);
+  await assert.rejects(publishCoverBatch(root, [saved.filename], { runGit: run('main', 'https://github.com/unrelated/project.git', []) }), /remoto origin/);
+  await assert.rejects(publishCoverBatch(root, [saved.filename], { runGit: run('main', 'https://github.com/masterfullgroup/masterfull-library.git', ['local', 'remote']) }), /commits locales pendientes/);
 });

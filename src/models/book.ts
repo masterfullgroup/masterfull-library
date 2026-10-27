@@ -22,6 +22,7 @@ export interface Book {
   demo?: boolean;
   tags?: string[];
   coverUrl?: string;
+  sourceCoverUrl?: string;
   fileProvider?: string;
   fileReference?: string;
   driveFileId?: string;

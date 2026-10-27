@@ -1,9 +1,13 @@
-import { createPublicKey, randomUUID, verify as verifySignature } from 'node:crypto';
-import { mkdir, open, realpath, lstat } from 'node:fs/promises';
+import { createHash, createPublicKey, randomUUID, verify as verifySignature } from 'node:crypto';
+import { mkdir, open, realpath, lstat, readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { execFile as execFileCallback } from 'node:child_process';
+import { promisify } from 'node:util';
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 const MAX_BODY_BYTES = Math.ceil(MAX_FILE_BYTES * 4 / 3) + 16_384;
+const MAX_BATCH_FILES = 100;
+const execFile = promisify(execFileCallback);
 const FIREBASE_JWKS_URL = 'https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com';
 const allowedTypes = new Map([
   ['image/jpeg', { extension: 'jpg', signature: (b) => b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff }],
@@ -81,7 +85,7 @@ export async function verifyAdminToken(token, projectId) {
 
 export function pagesUrl(base, filename) {
   const normalizedBase = new URL(base);
-  if (normalizedBase.protocol !== 'https:' || !normalizedBase.pathname.endsWith('/')) throw new Error('VITE_GITHUB_PAGES_URL debe ser una URL HTTPS que termine en /.');
+  if (normalizedBase.protocol !== 'https:' || !normalizedBase.hostname.endsWith('.github.io') || normalizedBase.username || normalizedBase.password || !normalizedBase.pathname.endsWith('/')) throw new Error('VITE_GITHUB_PAGES_URL debe ser una URL HTTPS de GitHub Pages que termine en /.');
   return new URL(`portadas/${filename}`, normalizedBase).toString();
 }
 
@@ -121,18 +125,83 @@ export async function saveCover(root, payload, baseUrl) {
   return { filename, localPath: `public/portadas/${filename}`, pagesUrl: pagesUrl(baseUrl, filename) };
 }
 
+export async function saveBulkCover(root, payload, baseUrl) {
+  const type = allowedTypes.get(payload.contentType);
+  if (!type || typeof payload.fileName !== 'string' || !/^[^/\\]+\.(jpe?g|png|webp)$/i.test(payload.fileName)) throw new Error('Selecciona un archivo JPG, PNG o WebP válido.');
+  if (typeof payload.dataBase64 !== 'string' || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(payload.dataBase64)) throw new Error('El archivo enviado no tiene un formato válido.');
+  const bytes = Buffer.from(payload.dataBase64, 'base64');
+  if (!bytes.length || bytes.length > MAX_FILE_BYTES || bytes.toString('base64') !== payload.dataBase64) throw new Error('La imagen debe pesar entre 1 byte y 2 MB.');
+  if (!type.signature(bytes)) throw new Error('El contenido del archivo no coincide con el formato de imagen declarado.');
+  const digest = createHash('sha256').update(bytes).digest('hex');
+  const filename = `${digest}.${type.extension}`;
+  const directory = await ensureSafeCoverDirectory(root);
+  const filePath = path.join(directory, filename);
+  let duplicate = false;
+  try {
+    const current = await lstat(filePath);
+    if (!current.isFile() || current.isSymbolicLink()) throw new Error('El destino de la portada no es un archivo regular.');
+    const currentBytes = await readFile(filePath);
+    if (createHash('sha256').update(currentBytes).digest('hex') !== digest) throw new Error('El archivo existente con el mismo nombre no coincide con su hash.');
+    duplicate = true;
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+    const handle = await open(filePath, 'wx', 0o644);
+    try { await handle.writeFile(bytes); } finally { await handle.close(); }
+  }
+  return { filename, localPath: `public/portadas/${filename}`, pagesUrl: pagesUrl(baseUrl, filename), sha256: digest, duplicate };
+}
+
 export async function checkPublished(root, filename, baseUrl) {
-  if (typeof filename !== 'string' || !/^[a-f0-9-]{36}\.(jpg|png|webp)$/.test(filename)) throw new Error('El nombre de archivo de portada no es válido.');
+  if (typeof filename !== 'string' || !/^(?:[a-f0-9-]{36}|[a-f0-9]{64})\.(jpg|png|webp)$/.test(filename)) throw new Error('El nombre de archivo de portada no es válido.');
   const localPath = path.join(await ensureSafeCoverDirectory(root), filename);
   const fileStat = await lstat(localPath);
   if (!fileStat.isFile() || fileStat.isSymbolicLink()) throw new Error('El archivo local de portada no es un archivo válido.');
   const url = pagesUrl(baseUrl, filename);
-  const response = await fetch(url, { method: 'HEAD', redirect: 'follow', cache: 'no-store', signal: AbortSignal.timeout(10_000) });
+  const response = await fetch(url, { method: 'GET', redirect: 'follow', cache: 'no-store', signal: AbortSignal.timeout(15_000) });
   const contentType = response.headers.get('content-type') || '';
   if (!response.ok || !contentType.toLowerCase().startsWith('image/')) {
     return { published: false, status: response.status, message: 'GitHub Pages todavía no entrega la imagen. Haz push de la carpeta public/portadas, espera el despliegue y comprueba de nuevo.' };
   }
-  return { published: true, pagesUrl: url, status: response.status };
+  const responseSize = Number(response.headers.get('content-length') || 0);
+  if (responseSize > MAX_FILE_BYTES) return { published: false, status: response.status, message: 'La respuesta de GitHub Pages supera el tamaño máximo permitido para una portada.' };
+  const publishedBytes = Buffer.from(await response.arrayBuffer());
+  if (publishedBytes.length > MAX_FILE_BYTES) return { published: false, status: response.status, message: 'La respuesta de GitHub Pages supera el tamaño máximo permitido para una portada.' };
+  const localBytes = await readFile(localPath);
+  const sha256 = createHash('sha256').update(publishedBytes).digest('hex');
+  const expectedSha256 = createHash('sha256').update(localBytes).digest('hex');
+  if (sha256 !== expectedSha256) return { published: false, status: response.status, message: 'La imagen publicada no coincide con el archivo local. GitHub Pages puede estar desplegando otra versión.' };
+  return { published: true, pagesUrl: url, status: response.status, sha256 };
+}
+
+export async function publishCoverBatch(root, filenames, { runGit = async (args, cwd) => execFile('git', args, { cwd, windowsHide: true }) } = {}) {
+  if (!Array.isArray(filenames) || filenames.length < 1 || filenames.length > MAX_BATCH_FILES) throw new Error('El lote debe incluir entre 1 y 100 portadas.');
+  const unique = [...new Set(filenames)];
+  if (unique.length !== filenames.length || unique.some((name) => !/^[a-f0-9]{64}\.(jpg|png|webp)$/.test(name))) throw new Error('El lote contiene nombres duplicados o no válidos.');
+  const directory = await ensureSafeCoverDirectory(root);
+  for (const filename of unique) {
+    const stat = await lstat(path.join(directory, filename));
+    if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('Todos los archivos del lote deben existir como imágenes locales regulares.');
+  }
+  const { stdout: branchOutput } = await runGit(['branch', '--show-current'], root);
+  if (branchOutput.trim() !== 'main') throw new Error('Para publicar en GitHub Pages, abre el checkout del repositorio en la rama main y vuelve a intentarlo.');
+  const { stdout: remoteOutput } = await runGit(['remote', 'get-url', 'origin'], root);
+  const remote = remoteOutput.trim().replace(/\.git$/i, '').toLowerCase();
+  if (!['https://github.com/masterfullgroup/masterfull-library', 'git@github.com:masterfullgroup/masterfull-library', 'ssh://git@github.com/masterfullgroup/masterfull-library'].includes(remote)) throw new Error('El remoto origin no corresponde al repositorio Masterfull Library esperado.');
+  await runGit(['fetch', 'origin', 'main'], root);
+  const { stdout: head } = await runGit(['rev-parse', 'HEAD'], root);
+  const { stdout: upstream } = await runGit(['rev-parse', '@{u}'], root);
+  const paths = unique.map((name) => `public/portadas/${name}`);
+  if (!head.trim() || !upstream.trim()) throw new Error('No se pudo identificar el estado de main y origin/main.');
+  if (head.trim() === upstream.trim()) {
+    await runGit(['add', '--', ...paths], root);
+    await runGit(['commit', '--only', '-m', `Publicar ${unique.length} portada(s)`, '--', ...paths], root);
+  } else {
+    const { stdout: committedFiles } = await runGit(['diff', '--name-only', '@{u}...HEAD'], root);
+    const changed = committedFiles.split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean).sort();
+    if (changed.length !== paths.length || changed.some((entry, index) => entry !== [...paths].sort()[index])) throw new Error('main tiene commits locales pendientes ajenos a este lote. No se publicaron para proteger los demás cambios.');
+  }
+  await runGit(['push', 'origin', 'main'], root);
+  return { published: true, count: unique.length, filenames: unique };
 }
 
 export function localCoverStoragePlugin({ root, projectId, pagesBaseUrl }) {
@@ -143,7 +212,7 @@ export function localCoverStoragePlugin({ root, projectId, pagesBaseUrl }) {
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
         const pathname = new URL(req.url || '/', 'http://127.0.0.1').pathname;
-        if (pathname !== '/__local-covers/save' && pathname !== '/__local-covers/check') return next();
+        if (!['/__local-covers/save', '/__local-covers/check', '/__local-covers/batch-save', '/__local-covers/publish-batch'].includes(pathname)) return next();
         if (!isLoopback(req.socket.remoteAddress) || !allowedOrigins.has(req.headers.origin) || req.headers['sec-fetch-site'] === 'cross-site') {
           return send(res, 403, { error: 'Este servicio solo acepta solicitudes de la vista previa local.' });
         }
@@ -155,9 +224,13 @@ export function localCoverStoragePlugin({ root, projectId, pagesBaseUrl }) {
           if (!token) return send(res, 401, { error: 'Inicia sesión con tu cuenta administradora.' });
           await verifyAdminToken(token, projectId);
           const payload = await readBody(req);
-          if (pathname === '/__local-covers/save') {
-            const saved = await saveCover(root, payload, pagesBaseUrl);
-            return send(res, 201, { ...saved, published: false });
+          if (pathname === '/__local-covers/save' || pathname === '/__local-covers/batch-save') {
+            const saved = pathname === '/__local-covers/save' ? await saveCover(root, payload, pagesBaseUrl) : await saveBulkCover(root, payload, pagesBaseUrl);
+            return send(res, saved.duplicate ? 200 : 201, { ...saved, published: false });
+          }
+          if (pathname === '/__local-covers/publish-batch') {
+            const result = await publishCoverBatch(root, payload.filenames);
+            return send(res, 200, result);
           }
           const result = await checkPublished(root, payload.filename, pagesBaseUrl);
           return send(res, result.published ? 200 : 409, result);
