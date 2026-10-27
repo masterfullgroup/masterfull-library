@@ -39,6 +39,7 @@ export default function BulkCoverManager() {
   const [error, setError] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const objectUrls = useRef(new Set<string>());
+  const localDevAvailable = import.meta.env.DEV && ['localhost', '127.0.0.1'].includes(window.location.hostname) && window.location.port === '5173';
   useEffect(() => () => objectUrls.current.forEach((url) => URL.revokeObjectURL(url)), []);
 
   async function selectFiles(files: FileList | null) {
@@ -145,6 +146,7 @@ export default function BulkCoverManager() {
   return <section className="admin-panel bulk-covers-manager">
     <div className="admin-panel-heading"><div><span className="panel-overline">PORTADAS DE LA COLECCIÓN</span><h2>Administrar portadas</h2></div><span className="panel-count">Hasta 100 imágenes</span></div>
     <p className="admin-empty-copy">Elige archivos JPG, PNG o WebP. Se preparan localmente y se publican juntas cuando confirmas. La selección requiere una coincidencia inequívoca por ISBN o ID exacto del libro.</p>
+    {!localDevAvailable ? <div className="cover-upload-storage-note"><strong>La publicación requiere el servidor local.</strong> Abre Masterfull Library en tu computadora con el servidor de desarrollo. GitHub Pages solo sirve la plataforma: no recibe archivos ni ejecuta Git.</div> : <>
     <div className="bulk-cover-toolbar"><label className="button button-secondary button-small" htmlFor="bulk-cover-files"><ImagePlus size={15} />Seleccionar imágenes</label><input ref={inputRef} id="bulk-cover-files" className="sr-only" type="file" multiple accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" onChange={(event) => { void selectFiles(event.currentTarget.files); event.currentTarget.value = ''; }} /><span>{items.length} seleccionadas</span><span>Publicadas: {publishedCount}</span><span>Pendientes: {pendingCount}</span><span>Fallidas: {failedCount}</span><span>Sin coincidencia: {unmatchedCount}</span><span>Ambiguas: {ambiguousCount}</span></div>
     {items.length > 0 && <div className="bulk-cover-actions">
       <button className="button button-primary button-small" disabled={busy || !items.some((item) => item.state === 'selected')} onClick={() => void saveLocalBatch()}><Upload size={14} />{busy ? 'Procesando…' : 'Preparar lote'}</button>
@@ -160,5 +162,6 @@ export default function BulkCoverManager() {
       {item.match.status === 'matched' && item.match.book ? <><span className="bulk-cover-match">Coincidencia: {item.match.book.title}</span>{item.state === 'published' && <label className="bulk-cover-confirm"><input type="checkbox" checked={Boolean(selected[item.key])} onChange={(event) => setSelected((current) => ({ ...current, [item.key]: event.target.checked }))} />Confirmo asignar a este libro</label>}{item.state === 'published' && item.match.book.sourceCoverUrl && <label className="bulk-cover-confirm"><input type="checkbox" checked={Boolean(replaceConfirmed[item.key])} onChange={(event) => setReplaceConfirmed((current) => ({ ...current, [item.key]: event.target.checked }))} />Confirmo reemplazar su portada actual</label>}</> : <span className="bulk-cover-match">{item.match.status === 'ambiguous' ? 'Coincidencia ambigua: no se asignará.' : 'Sin coincidencia exacta por ISBN o ID.'}</span>}
       {item.error && <span className="cover-upload-error">{item.error}</span>}{item.pagesUrl && <a href={item.pagesUrl} target="_blank" rel="noreferrer">Abrir imagen publicada</a>}</div>
     </article>)}</div>}
+    </>}
   </section>;
 }
