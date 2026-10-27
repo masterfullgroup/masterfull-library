@@ -1,0 +1,41 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Local environment files; keep the non-secret template tracked
+.env
+.env.*
+!.env.example
+
+# Firebase local state and logs
+.firebase/
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
+*-debug.log
+*.log
+
+# Private credentials and certificates
+credentials/
+secrets/
+*serviceAccount*.json
+*service-account*.json
+*firebase-adminsdk*.json
+*-firebase-adminsdk-*.json
+*.pem
+*.p12
+*.pfx
+*.key
+*.p8
+*.jks
+*.keystore
+*oauth-client*.json
+*credentials*.json
+*secret*.json
+
+# Temporary editor/OS files
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db

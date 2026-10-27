@@ -1,0 +1,20 @@
+export type GoogleBooksCandidate = {
+  id: string;
+  title: string;
+  authors: string[];
+  publisher: string;
+  publishedDate: string;
+  identifiers: Array<{ type?: string; identifier?: string }>;
+  isbns: string[];
+  isbnMatch: boolean;
+  titleMatch: boolean;
+  authorMatch: boolean;
+  titleAuthorMatch: boolean;
+  coverUrl: string;
+  coverOptions: Array<{ size: string; widthHint: number; url: string; source: 'Google Books' | 'Open Library' }>;
+  infoLink: string;
+  source: 'Google Books';
+};
+export function normalizeIsbn(value: unknown): string;
+export function selectLargestCoverByDimensions<T extends { width: number; height: number }>(covers: T[]): T | null;
+export function searchGoogleBooks(options: { isbn?: string; title?: string; author?: string; apiKey?: string; signal?: AbortSignal; fetchImpl?: typeof fetch }): Promise<{ candidates: GoogleBooksCandidate[]; usedTitleAuthorFallback: boolean; searchedIsbn: string }>;

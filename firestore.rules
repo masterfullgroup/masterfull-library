@@ -1,0 +1,193 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function conectado() { return request.auth != null; }
+    function propietario(uid) { return conectado() && request.auth.uid == uid; }
+    function perfilPath(uid) { return /databases/$(database)/documents/usuarios/$(uid); }
+    function solicitudPath(uid) { return /databases/$(database)/documents/solicitudesAcceso/$(uid); }
+    function activo() {
+      return conectado()
+        && exists(perfilPath(request.auth.uid))
+        && get(perfilPath(request.auth.uid)).data.activo == true;
+    }
+    function autorizado() { return activo(); }
+    // The admin claim is server-managed by Firebase Admin SDK; users cannot set it from this app.
+    function esAdmin() { return autorizado() && request.auth.token.admin == true; }
+    function solicitudAfter(uid, status) {
+      return existsAfter(solicitudPath(uid))
+        && getAfter(solicitudPath(uid)).data.estado == status;
+    }
+    function perfilAfter(uid, status, isActive) {
+      return existsAfter(perfilPath(uid))
+        && getAfter(perfilPath(uid)).data.uid == uid
+        && getAfter(perfilPath(uid)).data.estadoCuenta == status
+        && getAfter(perfilPath(uid)).data.activo == isActive;
+    }
+    function crearPerfilAprobado(uid) {
+      return esAdmin()
+        && !exists(perfilPath(uid))
+        && exists(solicitudPath(uid))
+        && get(solicitudPath(uid)).data.estado == 'pending'
+        && get(solicitudPath(uid)).data.correoVerificado == true
+        && request.resource.data.keys().hasAll(['uid', 'nombre', 'correo', 'activo', 'estadoCuenta', 'aprobadoPor', 'aprobadoEn'])
+        && request.resource.data.keys().hasOnly(['uid', 'nombre', 'correo', 'activo', 'estadoCuenta', 'aprobadoPor', 'aprobadoEn'])
+        && request.resource.data.uid == uid
+        && request.resource.data.nombre == get(solicitudPath(uid)).data.nombre
+        && request.resource.data.correo == get(solicitudPath(uid)).data.correo
+        && request.resource.data.activo == true
+        && request.resource.data.estadoCuenta == 'approved'
+        && request.resource.data.aprobadoPor == request.auth.uid
+        && request.resource.data.aprobadoEn == request.time
+        && solicitudAfter(uid, 'approved')
+        && getAfter(solicitudPath(uid)).data.aprobadoPor == request.auth.uid;
+    }
+    function actualizarPerfil(uid) {
+      return esAdmin() && (
+        (resource.data.activo == true
+          && resource.data.estadoCuenta == 'approved'
+          && request.resource.data.activo == false
+          && request.resource.data.estadoCuenta == 'suspendido'
+          && request.resource.data.suspendidoPor == request.auth.uid
+          && request.resource.data.suspendidoEn == request.time
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['activo', 'estadoCuenta', 'suspendidoPor', 'suspendidoEn'])
+          && solicitudAfter(uid, 'suspended')
+          && getAfter(solicitudPath(uid)).data.suspendidoPor == request.auth.uid)
+        || (resource.data.activo == false
+          && resource.data.estadoCuenta == 'suspendido'
+          && request.resource.data.activo == true
+          && request.resource.data.estadoCuenta == 'approved'
+          && request.resource.data.reactivadoPor == request.auth.uid
+          && request.resource.data.reactivadoEn == request.time
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['activo', 'estadoCuenta', 'reactivadoPor', 'reactivadoEn'])
+          && solicitudAfter(uid, 'approved')
+          && getAfter(solicitudPath(uid)).data.reactivadoPor == request.auth.uid)
+      );
+    }
+    function actualizarSolicitudPorAdmin(uid) {
+      return esAdmin() && (
+        (resource.data.estado == 'pending'
+          && request.resource.data.estado == 'approved'
+          && resource.data.correoVerificado == true
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado', 'aprobadoPor', 'aprobadoEn'])
+          && request.resource.data.aprobadoPor == request.auth.uid
+          && request.resource.data.aprobadoEn == request.time
+          && perfilAfter(uid, 'approved', true)
+          && getAfter(perfilPath(uid)).data.aprobadoPor == request.auth.uid)
+        || (resource.data.estado == 'pending'
+          && request.resource.data.estado == 'rejected'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado', 'rechazadoPor', 'rechazadoEn'])
+          && request.resource.data.rechazadoPor == request.auth.uid
+          && request.resource.data.rechazadoEn == request.time
+          && !exists(perfilPath(uid))
+          && !existsAfter(perfilPath(uid)))
+        || (resource.data.estado == 'approved'
+          && request.resource.data.estado == 'suspended'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado', 'suspendidoPor', 'suspendidoEn'])
+          && request.resource.data.suspendidoPor == request.auth.uid
+          && request.resource.data.suspendidoEn == request.time
+          && perfilAfter(uid, 'suspendido', false)
+          && getAfter(perfilPath(uid)).data.suspendidoPor == request.auth.uid)
+        || (resource.data.estado == 'suspended'
+          && request.resource.data.estado == 'approved'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado', 'reactivadoPor', 'reactivadoEn'])
+          && request.resource.data.reactivadoPor == request.auth.uid
+          && request.resource.data.reactivadoEn == request.time
+          && resource.data.correoVerificado == true
+          && perfilAfter(uid, 'approved', true)
+          && getAfter(perfilPath(uid)).data.reactivadoPor == request.auth.uid)
+      );
+    }
+    function libroActivo(libroId) {
+      return exists(/databases/$(database)/documents/libros/$(libroId))
+        && get(/databases/$(database)/documents/libros/$(libroId)).data.activo == true;
+    }
+
+    match /libros/{bookId} {
+      allow read: if esAdmin() || (autorizado() && resource.data.activo == true);
+      allow create, update, delete: if esAdmin();
+    }
+    match /categorias/{categoryId} {
+      allow read: if esAdmin() || (autorizado() && resource.data.activa == true);
+      allow create, update, delete: if esAdmin();
+    }
+    match /usuarios/{uid} {
+      // The owner can read its own profile; only the active custom-claim admin may manage status.
+      allow read: if propietario(uid) || esAdmin();
+      allow create: if crearPerfilAprobado(uid);
+      allow update: if actualizarPerfil(uid);
+      allow delete: if false;
+
+      match /estado/{stateId} {
+        allow read: if stateId == 'lectura' && propietario(uid) && autorizado();
+        allow create, update: if stateId == 'lectura'
+          && propietario(uid) && autorizado()
+          && request.resource.data.keys().hasAll(['ultimoLibroId', 'ultimaPaginaLeida', 'fechaUltimaLectura'])
+          && request.resource.data.keys().hasOnly(['ultimoLibroId', 'ultimaPaginaLeida', 'fechaUltimaLectura'])
+          && request.resource.data.ultimoLibroId is string
+          && libroActivo(request.resource.data.ultimoLibroId)
+          && request.resource.data.ultimaPaginaLeida is int
+          && request.resource.data.ultimaPaginaLeida > 0
+          && request.resource.data.fechaUltimaLectura == request.time;
+        allow delete: if stateId == 'lectura' && propietario(uid) && autorizado();
+      }
+
+      match /favoritos/{bookId} {
+        allow read, delete: if propietario(uid) && autorizado();
+        allow create: if propietario(uid) && autorizado()
+          && libroActivo(bookId)
+          && request.resource.data.keys().hasAll(['libroId', 'fechaCreacion'])
+          && request.resource.data.keys().hasOnly(['libroId', 'fechaCreacion'])
+          && request.resource.data.libroId == bookId
+          && request.resource.data.fechaCreacion == request.time;
+        allow update: if false;
+      }
+      match /historial/{bookId} {
+        allow read: if propietario(uid) && autorizado();
+        allow create, update: if propietario(uid) && autorizado()
+          && libroActivo(bookId)
+          && request.resource.data.keys().hasAll(['libroId', 'fechaLectura'])
+          && request.resource.data.keys().hasOnly(['libroId', 'pagina', 'fechaLectura'])
+          && request.resource.data.libroId == bookId
+          && (!('pagina' in request.resource.data)
+            || (request.resource.data.pagina is int && request.resource.data.pagina > 0))
+          && request.resource.data.fechaLectura == request.time;
+        allow delete: if propietario(uid) && autorizado();
+      }
+    }
+
+    match /solicitudesAcceso/{uid} {
+      // A new, unaffiliated Auth user may submit only a fixed pending request for itself.
+      allow create: if propietario(uid)
+        && !exists(perfilPath(uid))
+        && !exists(solicitudPath(uid))
+        && request.resource.data.keys().hasAll(['uid', 'nombre', 'correo', 'estado', 'correoVerificado', 'verificadoEn', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['uid', 'nombre', 'correo', 'estado', 'correoVerificado', 'verificadoEn', 'createdAt'])
+        && request.resource.data.uid == uid
+        && request.resource.data.nombre is string
+        && request.resource.data.nombre.size() >= 2
+        && request.resource.data.nombre.size() <= 100
+        && request.resource.data.correo == request.auth.token.email
+        && request.resource.data.estado == 'pending'
+        && request.resource.data.correoVerificado == false
+        && request.resource.data.verificadoEn == null
+        && request.resource.data.createdAt == request.time;
+      allow read: if propietario(uid) || esAdmin();
+      allow update: if (propietario(uid)
+          && resource.data.estado == 'pending'
+          && resource.data.correoVerificado == false
+          && request.resource.data.estado == 'pending'
+          && request.resource.data.correoVerificado == true
+          && request.resource.data.correo == resource.data.correo
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['correoVerificado', 'verificadoEn'])
+          && request.auth.token.email_verified == true
+          && request.auth.token.email == resource.data.correo
+          && request.resource.data.verificadoEn == request.time)
+        || actualizarSolicitudPorAdmin(uid);
+      allow delete: if false;
+    }
+
+    // Explicit default-deny for all collections not defined above.
+    match /{document=**} { allow read, write: if false; }
+  }
+}
