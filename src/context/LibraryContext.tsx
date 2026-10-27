@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { addDoc, collection, deleteDoc, doc, getDocs, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, getDocs, limit, onSnapshot, orderBy, query, runTransaction, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore';
 import { firebaseAuth } from '../firebase/client';
 import { firestore } from '../firebase/client';
 import { useAuth } from './AuthContext';
@@ -23,7 +23,13 @@ interface LibraryState {
   archiveBook: (id: string) => Promise<void>;
   deleteBook: (id: string) => Promise<void>;
   setBookActive: (id: string, active: boolean) => Promise<void>;
+  updateConfirmedBookCovers: (updates: Array<{ id: string; coverUrl: string; expectedCoverUrl: string; replaceExisting: boolean }>) => Promise<void>;
 }
+
+type CoverUpdateTransaction = {
+  get: (reference: unknown) => Promise<{ exists: () => boolean; data: () => Record<string, any> }>;
+  update: (reference: unknown, data: Record<string, unknown>) => unknown;
+};
 
 const LibraryContext = createContext<LibraryState | null>(null);
 
@@ -41,7 +47,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     const subcategory = categories.find((entry) => entry.id === data.categoriaSubId);
     const createdAt = data.fechaCreacion?.toDate?.() ?? (data.fechaCreacion ? new Date(data.fechaCreacion) : null);
     const addedAt = createdAt instanceof Date && Number.isFinite(createdAt.getTime()) ? createdAt.toISOString() : '';
-    return { id, title: data.titulo ?? '', subtitle: data.subtitulo ?? '', authors: Array.isArray(data.autores) ? data.autores : [], publisher: data.editorial ?? '', year: data.anio ?? undefined, edition: data.edicion ?? '', isbn: String(data.isbn ?? ''), language: data.idioma ?? 'Español', category: category?.name ?? '', categoryId: data.categoriaId ?? '', subcategory: subcategory?.name ?? '', subcategoryId: data.categoriaSubId ?? '', description: data.descripcion ?? '', pages: data.paginas ?? undefined, format: data.formato === 'EPUB' ? 'EPUB' : 'PDF', sizeLabel: '', addedAt, cover: 'grid', accent: '#49616b', demo: false, tags: Array.isArray(data.etiquetas) ? data.etiquetas : [], coverUrl: resolveCoverImageUrl(data.portada, data.driveUrl ?? data.archivoReferencia ?? ''), fileProvider: data.archivoProveedor ?? '', fileReference: data.driveUrl ?? data.archivoReferencia ?? '', driveFileId: data.driveFileId ?? '', driveUrl: data.driveUrl ?? '', active: data.activo !== false } as Book;
+    return { id, title: data.titulo ?? '', subtitle: data.subtitulo ?? '', authors: Array.isArray(data.autores) ? data.autores : [], publisher: data.editorial ?? '', year: data.anio ?? undefined, edition: data.edicion ?? '', isbn: String(data.isbn ?? ''), language: data.idioma ?? 'Español', category: category?.name ?? '', categoryId: data.categoriaId ?? '', subcategory: subcategory?.name ?? '', subcategoryId: data.categoriaSubId ?? '', description: data.descripcion ?? '', pages: data.paginas ?? undefined, format: data.formato === 'EPUB' ? 'EPUB' : 'PDF', sizeLabel: '', addedAt, cover: 'grid', accent: '#49616b', demo: false, tags: Array.isArray(data.etiquetas) ? data.etiquetas : [], coverUrl: resolveCoverImageUrl(data.portada, data.driveUrl ?? data.archivoReferencia ?? ''), sourceCoverUrl: typeof data.portada === 'string' ? data.portada : '', fileProvider: data.archivoProveedor ?? '', fileReference: data.driveUrl ?? data.archivoReferencia ?? '', driveFileId: data.driveFileId ?? '', driveUrl: data.driveUrl ?? '', active: data.activo !== false } as Book;
   }), [bookRows, categories]);
 
   useEffect(() => {
@@ -108,6 +114,21 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     async archiveBook(id) { if (!firestore) throw new Error('Firebase no está configurado.'); await updateDoc(doc(firestore, 'libros', id), { activo: false, fechaActualizacion: serverTimestamp() }); },
     async deleteBook(id) { if (!firestore) throw new Error('Firebase no está configurado.'); await deleteDoc(doc(firestore, 'libros', id)); },
     async setBookActive(id, active) { if (!firestore) throw new Error('Firebase no está configurado.'); await updateDoc(doc(firestore, 'libros', id), { activo: active, fechaActualizacion: serverTimestamp() }); },
+    async updateConfirmedBookCovers(updates) {
+      if (!firestore || !user) throw new Error('Firebase no está configurado.');
+      if (!updates.length || updates.length > 100 || new Set(updates.map((entry) => entry.id)).size !== updates.length) throw new Error('La lista de portadas confirmadas no es válida.');
+      await runTransaction(firestore, async (transaction: CoverUpdateTransaction) => {
+        const rows = await Promise.all(updates.map((entry) => transaction.get(doc(firestore, 'libros', entry.id))));
+        rows.forEach((snapshot, index) => {
+          const update = updates[index];
+          if (!snapshot.exists()) throw new Error('Un libro confirmado ya no existe. Actualiza la lista e inténtalo de nuevo.');
+          const current = typeof snapshot.data().portada === 'string' ? snapshot.data().portada : '';
+          if (current !== update.expectedCoverUrl) throw new Error('La portada del libro cambió durante la confirmación. Revisa el libro antes de volver a guardar.');
+          if (current && !update.replaceExisting) throw new Error('Confirma expresamente el reemplazo de cada portada manual existente.');
+        });
+        updates.forEach((entry) => transaction.update(doc(firestore, 'libros', entry.id), { portada: entry.coverUrl, fechaActualizacion: serverTimestamp() }));
+      });
+    },
   }), [books, categories, favorites, recentBooks, loading, error, user?.uid]);
 
   return <LibraryContext.Provider value={value}>{children}</LibraryContext.Provider>;
