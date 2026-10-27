@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="robots" content="noindex" />
+    <title>Abriendo Masterfull Library…</title>
+    <script>
+      const base = '/masterfull-library/';
+      const destination = location.pathname + location.search + location.hash;
+      sessionStorage.setItem('masterfull-pages-route', destination);
+      location.replace(base);
+    </script>
+  </head>
+  <body><p>Abriendo Masterfull Library…</p></body>
+</html>

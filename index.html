@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#071827" />
+    <meta name="description" content="Masterfull Library — una biblioteca digital para explorar y leer con calma." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <title>Masterfull Library</title>
+    <script>
+      (() => {
+        const key = 'masterfull-pages-route';
+        const base = '%BASE_URL%';
+        const saved = sessionStorage.getItem(key);
+        if (saved && saved.startsWith(base)) {
+          sessionStorage.removeItem(key);
+          history.replaceState(null, '', saved);
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
