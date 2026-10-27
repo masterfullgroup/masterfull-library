@@ -4,7 +4,7 @@ import { ArrowDownAZ, ArrowLeft, ArrowRight, ArrowUpRight, Atom, BookOpen, Chevr
 import { useLibrary } from '../context/LibraryContext';
 import { useToast } from '../context/ToastContext';
 import type { Book, LibraryCategory } from '../models/book';
-import BookCard, { CompactBookRow } from '../components/BookCard';
+import BookCard from '../components/BookCard';
 import BookCover from '../components/BookCover';
 import GoogleBooksCoverPicker from '../components/GoogleBooksCoverPicker';
 import LocalCoverPicker from '../components/LocalCoverPicker';
@@ -29,28 +29,73 @@ function EmptyState({ icon: Icon = Search, title, description, action, onAction 
 }
 
 export function HomePage() {
-  const { books, categories, favorites, recentBooks, loading, error } = useLibrary();
+  const { books, categories, recentBooks, loading, error } = useLibrary();
   const navigate = useNavigate();
-  const recent = [...books].filter((book) => book.addedAt).sort((a, b) => b.addedAt.localeCompare(a.addedAt)).slice(0, 4);
-  const resume = recentBooks.map(({ id }) => books.find((book) => book.id === id)).filter((book): book is Book => Boolean(book)).slice(0, 3);
+  const activeBooks = useMemo(() => books.filter((book) => book.active !== false), [books]);
+  const recentlyAdded = useMemo(() => {
+    const seen = new Set<string>();
+    return [...activeBooks].filter((book) => Boolean(book.addedAt))
+      .sort((a, b) => b.addedAt.localeCompare(a.addedAt))
+      .filter((book) => {
+        if (seen.has(book.id)) return false;
+        seen.add(book.id);
+        return true;
+      }).slice(0, 6);
+  }, [activeBooks]);
+  const recentHistory = useMemo(() => {
+    const seen = new Set<string>();
+    return recentBooks.flatMap(({ id }) => {
+      if (seen.has(id)) return [];
+      seen.add(id);
+      const book = activeBooks.find((entry) => entry.id === id);
+      return book ? [book] : [];
+    });
+  }, [activeBooks, recentBooks]);
+  const resume = recentHistory.slice(0, 3);
   const activeCategories = categories.filter((category) => category.active);
   return <div className="page home-page">
-    <PageHeading eyebrow="BIBLIOTECA PERSONAL" title="Explora el conocimiento." description="Tu biblioteca digital, organizada para aprender, investigar y descubrir." action={<Link className="button button-primary" to="/catalog">Explorar catálogo<ArrowRight size={16} /></Link>} />
+    <PageHeading eyebrow="BIBLIOTECA PERSONAL" title="Explora el conocimiento." description="Tu biblioteca digital para aprender, investigar y descubrir." />
     {error && <div className="admin-warning" role="alert"><LockKeyhole size={16} /><span>{error}</span></div>}
-    <section className="home-stats" aria-label="Resumen de tu biblioteca">
-      <StatCard label="Libros disponibles" value={books.length} icon={BookOpen} note="En tu colección" />
-      <StatCard label="Categorías" value={activeCategories.length} icon={FolderKanban} note="Áreas activas" />
-      <StatCard label="Favoritos" value={favorites.length} icon={Heart} note="Guardados por ti" />
-      <StatCard label="Lecturas recientes" value={resume.length} icon={History} note="En tu historial" />
+    <section className="home-section continue-section" id="continue-reading">
+      <SectionTitle eyebrow="TU HISTORIAL" title="Continuar leyendo" link={recentHistory.length > 3 ? 'Ver historial' : undefined} onClick={() => navigate('/history')} />
+      {loading ? <div className="reader-loading"><strong>Cargando historial…</strong></div> : resume.length ? <div className="continue-reading-grid">{resume.map((book) => <ContinueReadingCard key={book.id} book={book} />)}</div> : <EmptyState icon={History} title="Aún no hay lecturas recientes." description="Cuando abras un libro, podrás retomarlo desde aquí." action="Explorar catálogo" onAction={() => navigate('/catalog')} />}
     </section>
-    {resume.length > 0 && <section className="home-section continue-section" id="continue-reading"><SectionTitle index="" eyebrow="TU ACTIVIDAD" title="Lecturas recientes" link="Ver historial" onClick={() => navigate('/history')} /><div className="continue-layout"><div className="continue-list">{resume.map((book) => <CompactBookRow key={book.id} book={book} />)}</div><Link className="reading-note" to={`/reader/${resume[0].id}`}><span className="reading-note-symbol"><BookOpen size={19} /></span><span className="reading-note-copy"><small>LECTURA RECIENTE</small><strong>{resume[0].title}</strong><em>{resume[0].authors[0]} · Volver a abrir</em></span><ArrowUpRight size={18} className="reading-note-arrow" /></Link></div></section>}
-    <section className="home-section category-section"><SectionTitle index="" eyebrow="DESCUBRIR" title="Explorar disciplinas" link="Ver categorías" onClick={() => navigate('/categories')} />{activeCategories.length ? <div className="category-ribbon">{activeCategories.slice(0, 8).map((category, index) => <CategoryTile key={category.id} category={category} count={books.filter((book) => book.categoryId === category.id || book.subcategoryId === category.id || book.category === category.name || book.subcategory === category.name).length} index={index} onClick={() => navigate(`/catalog?category=${encodeURIComponent(category.name)}`)} />)}</div> : <EmptyState icon={FolderKanban} title="Aún no hay categorías." description="Las categorías aparecerán aquí cuando se registren en la biblioteca." />}</section>
-    <section className="home-section"><SectionTitle index="" eyebrow="COLECCIÓN" title="Libros recientes" link="Abrir catálogo" onClick={() => navigate('/catalog?sort=newest')} />{loading ? <div className="reader-loading"><strong>Cargando libros…</strong></div> : recent.length ? <div className="book-grid book-grid--home">{recent.map((book, index) => <BookCard key={book.id} book={book} index={index} />)}</div> : <EmptyState icon={BookOpen} title="Tu biblioteca está lista para empezar." description="Los libros incorporados a tu colección aparecerán en esta sección." action="Explorar catálogo" onAction={() => navigate('/catalog')} />}</section>
+    <section className="home-section category-section"><SectionTitle eyebrow="BIBLIOTECA" title="Explorar disciplinas" link="Ver categorías" onClick={() => navigate('/categories')} />{loading ? <div className="reader-loading"><strong>Cargando categorías…</strong></div> : activeCategories.length ? <div className="home-category-grid">{activeCategories.map((category, index) => <CategoryTile key={category.id} category={category} count={booksInCategory(category, activeBooks, categories, true)} index={index} onClick={() => navigate(`/catalog?category=${encodeURIComponent(category.name)}`)} />)}</div> : <EmptyState icon={FolderKanban} title="Aún no hay categorías." description="Las categorías aparecerán aquí cuando se registren en la biblioteca." />}</section>
+    <section className="home-section"><SectionTitle eyebrow="COLECCIÓN" title="Añadidos recientemente" link="Ver catálogo" onClick={() => navigate('/catalog?sort=newest')} />{loading ? <div className="reader-loading"><strong>Cargando libros…</strong></div> : recentlyAdded.length ? <div className="home-added-grid">{recentlyAdded.map((book) => <HomeAddedBookCard key={book.id} book={book} />)}</div> : <EmptyState icon={BookOpen} title="Tu biblioteca está lista para empezar." description="Los libros incorporados a tu colección aparecerán en esta sección." action="Explorar catálogo" onAction={() => navigate('/catalog')} />}</section>
   </div>;
 }
 
-function StatCard({ label, value, icon: Icon, note }: { label: string; value: number; icon: LucideIcon; note: string }) {
-  return <article className="home-stat-card"><span className="home-stat-icon"><Icon size={19} strokeWidth={1.8} /></span><span className="home-stat-label">{label}</span><strong>{value}</strong><small>{note}</small></article>;
+function ContinueReadingCard({ book }: { book: Book }) {
+  return <article className="continue-reading-card">
+    <Link to={`/book/${book.id}`} className="continue-reading-cover" aria-label={`Ver detalles de ${book.title}`}><BookCover book={book} /></Link>
+    <div className="continue-reading-copy">
+      <span className="continue-reading-category" title={book.category || 'Sin categoría'}>{book.category || 'Sin categoría'}</span>
+      <Link className="continue-reading-title" to={`/book/${book.id}`} title={book.title}>{book.title}</Link>
+      <span className="continue-reading-author" title={book.authors.join(', ')}>{book.authors.join(', ') || 'Autor no disponible'}</span>
+      {book.year && <span className="continue-reading-year">{book.year}</span>}
+      <Link className="button button-secondary button-small continue-reading-action" to={`/reader/${book.id}`}>Volver a leer<ArrowRight size={14} /></Link>
+    </div>
+  </article>;
+}
+
+function HomeAddedBookCard({ book }: { book: Book }) {
+  const { favorites, toggleFavorite } = useLibrary();
+  const toast = useToast();
+  const saved = favorites.includes(book.id);
+  return <article className="home-added-card">
+    <div className="home-added-cover-wrap">
+      <Link to={`/book/${book.id}`} aria-label={`Ver detalles de ${book.title}`}><BookCover book={book} /></Link>
+      <button className={`icon-button cover-save${saved ? ' is-saved' : ''}`} aria-label={saved ? `Quitar ${book.title} de favoritos` : `Guardar ${book.title} en favoritos`} aria-pressed={saved} onClick={() => { void toggleFavorite(book.id).then(() => toast(saved ? 'Se quitó de favoritos.' : 'Se guardó en favoritos.', 'success')).catch(() => toast('No se pudo actualizar favoritos.', 'warning')); }}><Heart size={16} fill={saved ? 'currentColor' : 'none'} /></button>
+      <span className="cover-format">{book.format}</span>
+    </div>
+    <div className="home-added-copy">
+      <span className="home-added-category" title={book.category || 'Sin categoría'}>{book.category || 'Sin categoría'}</span>
+      <Link className="home-added-title" to={`/book/${book.id}`} title={book.title}>{book.title}</Link>
+      <p className="home-added-author" title={book.authors.join(', ')}>{book.authors.join(', ') || 'Autor no disponible'}</p>
+      <span className="home-added-year">{book.year ?? 'Año no disponible'}</span>
+      <Link className="button button-secondary button-small home-added-read" to={`/reader/${book.id}`}>Leer libro<ArrowRight size={14} /></Link>
+    </div>
+  </article>;
 }
 
 function CategoryTile({ category, count, index, onClick }: { category: LibraryCategory; count: number; index: number; onClick: () => void }) {
