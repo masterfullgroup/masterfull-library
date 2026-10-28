@@ -53,6 +53,7 @@ export function HomePage() {
   }, [activeBooks, recentBooks]);
   const resume = recentHistory.slice(0, 3);
   const activeCategories = categories.filter((category) => category.active);
+  const mainCategories = activeCategories.filter((category) => !category.parentId);
   return <div className="page home-page">
     <PageHeading eyebrow="BIBLIOTECA PERSONAL" title="Explora el conocimiento." description="Tu biblioteca digital para aprender, investigar y descubrir." />
     {error && <div className="admin-warning" role="alert"><LockKeyhole size={16} /><span>{error}</span></div>}
@@ -60,7 +61,7 @@ export function HomePage() {
       <SectionTitle eyebrow="TU HISTORIAL" title="Continuar leyendo" link={recentHistory.length > 3 ? 'Ver historial' : undefined} onClick={() => navigate('/history')} />
       {loading ? <div className="reader-loading"><strong>Cargando historial…</strong></div> : resume.length ? <div className="continue-reading-grid">{resume.map((book) => <ContinueReadingCard key={book.id} book={book} />)}</div> : <EmptyState icon={History} title="Aún no hay lecturas recientes." description="Cuando abras un libro, podrás retomarlo desde aquí." action="Explorar catálogo" onAction={() => navigate('/catalog')} />}
     </section>
-    <section className="home-section category-section"><SectionTitle eyebrow="BIBLIOTECA" title="Explorar disciplinas" link="Ver categorías" onClick={() => navigate('/categories')} />{loading ? <div className="reader-loading"><strong>Cargando categorías…</strong></div> : activeCategories.length ? <div className="home-category-grid">{activeCategories.map((category, index) => <CategoryTile key={category.id} category={category} count={booksInCategory(category, activeBooks, categories, true)} index={index} onClick={() => navigate(`/catalog?category=${encodeURIComponent(category.name)}`)} />)}</div> : <EmptyState icon={FolderKanban} title="Aún no hay categorías." description="Las categorías aparecerán aquí cuando se registren en la biblioteca." />}</section>
+    <section className="home-section category-section"><SectionTitle eyebrow="BIBLIOTECA" title="Explorar disciplinas" link="Ver categorías" onClick={() => navigate('/categories')} />{loading ? <div className="reader-loading"><strong>Cargando categorías…</strong></div> : mainCategories.length ? <div className="home-category-grid">{mainCategories.slice(0, 8).map((category, index) => <CategoryTile key={category.id} category={category} count={booksInCategory(category, activeBooks, categories, true)} index={index} onClick={() => navigate(`/catalog?category=${encodeURIComponent(category.name)}`)} />)}</div> : <EmptyState icon={FolderKanban} title="Aún no hay categorías." description="Las categorías aparecerán aquí cuando se registren en la biblioteca." />}</section>
     <section className="home-section"><SectionTitle eyebrow="COLECCIÓN" title="Añadidos recientemente" link="Ver catálogo" onClick={() => navigate('/catalog?sort=newest')} />{loading ? <div className="reader-loading"><strong>Cargando libros…</strong></div> : recentlyAdded.length ? <div className="home-added-grid">{recentlyAdded.map((book) => <HomeAddedBookCard key={book.id} book={book} />)}</div> : <EmptyState icon={BookOpen} title="Tu biblioteca está lista para empezar." description="Los libros incorporados a tu colección aparecerán en esta sección." action="Explorar catálogo" onAction={() => navigate('/catalog')} />}</section>
   </div>;
 }
@@ -73,7 +74,7 @@ function ContinueReadingCard({ book }: { book: Book }) {
       <Link className="continue-reading-title" to={`/book/${book.id}`} title={book.title}>{book.title}</Link>
       <span className="continue-reading-author" title={book.authors.join(', ')}>{book.authors.join(', ') || 'Autor no disponible'}</span>
       {book.year && <span className="continue-reading-year">{book.year}</span>}
-      <Link className="button button-secondary button-small continue-reading-action" to={`/reader/${book.id}`}>Volver a leer<ArrowRight size={14} /></Link>
+      <Link className="button button-primary button-small continue-reading-action" to={`/reader/${book.id}`}>Volver a leer<ArrowRight size={14} /></Link>
     </div>
   </article>;
 }
@@ -93,7 +94,7 @@ function HomeAddedBookCard({ book }: { book: Book }) {
       <Link className="home-added-title" to={`/book/${book.id}`} title={book.title}>{book.title}</Link>
       <p className="home-added-author" title={book.authors.join(', ')}>{book.authors.join(', ') || 'Autor no disponible'}</p>
       <span className="home-added-year">{book.year ?? 'Año no disponible'}</span>
-      <Link className="button button-secondary button-small home-added-read" to={`/reader/${book.id}`}>Leer libro<ArrowRight size={14} /></Link>
+      <Link className="button button-primary button-small home-added-read" to={`/reader/${book.id}`}>Leer libro<ArrowRight size={14} /></Link>
     </div>
   </article>;
 }
