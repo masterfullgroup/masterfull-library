@@ -1923,3 +1923,61 @@ h1, h2, h3, h4, .welcome-row h1, .page-heading h1, .section-heading h2,
 @media (prefers-reduced-motion: reduce) {
   .categories-page .category-tile, .categories-page .category-filter-buttons button { transition: none; }
 }
+/* Platform refinement: clearer admin tasks, real preferences, and focused page layouts. */
+.admin-page .page-heading { margin-block-end: 20px; }
+.admin-page .page-heading h1 { font-size: clamp(30px, 3vw, 38px); }
+.admin-page .page-heading p { max-width: 620px; }
+.admin-tabs { gap: 6px; overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-width: thin; }
+.admin-tabs button { flex: 0 0 auto; min-height: 42px; font-size: 13px; }
+.admin-tabs button.active { border-block-end-color: var(--color-primary); color: var(--color-primary); }
+.admin-summary-grid { gap: 14px; margin-block-end: 16px; }
+.admin-summary-card { min-height: 116px; padding: 17px 18px; gap: 11px; }
+.admin-summary-card > div { color: var(--color-text-tertiary); font-size: 11px; letter-spacing: .08em; }
+.admin-summary-card > div svg { color: var(--color-primary); }
+.admin-summary-card > strong { font-size: 30px; font-weight: 650; }
+.admin-summary-card > small { color: var(--color-text-secondary); font-size: 12px; }
+.admin-overview-next { padding: 20px; }
+.admin-overview-next .admin-panel-heading { margin-block-end: 14px; }
+.admin-overview-next .admin-panel-heading h2 { margin-block-start: 5px; }
+.admin-overview-count { color: var(--color-text-secondary); font-size: 12px; }
+.admin-overview-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.admin-quick-action { display: grid; min-width: 0; grid-template-columns: 36px minmax(0, 1fr) 16px; align-items: center; gap: 10px; padding: 13px; border: 1px solid var(--color-border); border-radius: 9px; background: var(--color-surface-raised); color: var(--color-text-secondary); text-align: start; cursor: pointer; transition: border-color 140ms ease, background-color 140ms ease; }
+.admin-quick-action:hover { border-color: var(--color-primary); background: var(--color-accent-soft); }
+.admin-quick-action > span:first-child { display: grid; width: 34px; height: 34px; place-items: center; border: 1px solid var(--color-border); border-radius: 8px; color: var(--color-primary); }
+.admin-quick-action > span:nth-child(2) { display: grid; min-width: 0; gap: 4px; }
+.admin-quick-action strong { overflow-wrap: anywhere; color: var(--color-foreground); font-size: 13px; font-weight: 650; }
+.admin-quick-action small { color: var(--color-text-secondary); font-size: 11px; line-height: 1.45; }
+.admin-quick-action > svg { color: var(--color-text-tertiary); }
+.settings-layout { display: block; max-width: 1000px; }
+.settings-content { width: 100%; }
+.settings-section { padding: 22px; }
+.settings-section > div:first-child { margin-block-end: 12px; }
+.settings-section h2 { font-size: 18px; }
+.settings-section > div:first-child p { font-size: 13px; }
+.settings-row { min-height: 62px; }
+.settings-row strong, .settings-info-line strong { font-size: 14px; }
+.settings-row small, .settings-info-line small { font-size: 13px; line-height: 1.5; }
+.settings-info-line { gap: 12px; padding-block: 7px; }
+.home-page .home-added-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 190px), 230px)); justify-content: start; gap: 14px; }
+.home-page .home-added-card { max-width: 230px; }
+.home-page .home-category-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); }
+.home-page, .admin-page, .settings-page, .catalog-page, .book-detail-page { min-width: 0; overflow-wrap: anywhere; }
+.category-filter-row { flex-wrap: wrap; }
+.category-filter-buttons { display: flex; min-width: 0; flex-wrap: wrap; gap: 6px; }
+.category-filter-buttons button { min-height: 36px; max-width: 100%; overflow-wrap: anywhere; }
+@media (max-width: 850px) { .admin-overview-actions { grid-template-columns: 1fr; } .admin-quick-action { min-height: 60px; } }
+@media (max-width: 640px) {
+  .admin-page .page-heading { gap: 12px; }
+  .admin-page .page-heading h1 { font-size: 30px; }
+  .admin-page .page-heading .button { min-height: 40px; }
+  .admin-tabs { margin-inline: -4px; padding-inline: 4px; }
+  .admin-summary-grid { grid-template-columns: 1fr; gap: 8px; }
+  .admin-summary-card { min-height: 90px; grid-template-columns: 1fr auto; align-items: center; gap: 4px 12px; }
+  .admin-summary-card > div { grid-column: 1; }
+  .admin-summary-card > strong { grid-column: 2; grid-row: 1 / 3; }
+  .admin-summary-card > small { grid-column: 1; }
+  .admin-overview-next { padding: 15px; }
+  .admin-overview-next .admin-panel-heading { align-items: flex-start; }
+  .admin-overview-count { max-width: 125px; text-align: end; }
+  .settings-section { padding: 16px; }
+}
