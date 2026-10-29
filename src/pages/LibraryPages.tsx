@@ -99,16 +99,25 @@ function HomeAddedBookCard({ book }: { book: Book }) {
   </article>;
 }
 
-function CategoryTile({ category, count, index, onClick }: { category: LibraryCategory; count: number; index: number; onClick: () => void }) {
-  const Icon = iconMap[category.icon];
-  return <button className={`category-tile category-tile--${index + 1}`} onClick={onClick}><span className="category-tile-count">0{index + 1}</span><span className="category-tile-icon"><Icon size={21} strokeWidth={1.6} /></span><strong>{category.name}</strong><span className="category-tile-foot">{count} {count === 1 ? 'libro' : 'libros'}<ArrowUpRight size={14} /></span></button>;
+function CategoryTile({ category, count, index, onClick, icon, className = '', showDecoration = true }: { category: LibraryCategory; count: number; index: number; onClick: () => void; icon?: LucideIcon; className?: string; showDecoration?: boolean }) {
+  const Icon = icon ?? iconMap[category.icon];
+  return <button className={`category-tile category-tile--${index + 1}${className ? ` ${className}` : ''}`} onClick={onClick}>
+    {showDecoration && <span className="category-tile-count">0{index + 1}</span>}
+    <span className="category-tile-icon"><Icon size={20} strokeWidth={1.7} /></span>
+    <strong>{category.name}</strong>
+    <span className="category-tile-foot">{count} {count === 1 ? 'libro' : 'libros'}{showDecoration && <ArrowUpRight size={14} />}</span>
+  </button>;
 }
 
 function booksInCategory(category: LibraryCategory, books: Book[], categories: LibraryCategory[], includeChildren = false) {
   const related = includeChildren ? [category, ...categories.filter((item) => item.parentId === category.id)] : [category];
   const ids = new Set(related.map((item) => item.id));
   const names = new Set(related.map((item) => item.name));
-  return books.filter((book) => ids.has(book.categoryId ?? '') || ids.has(book.subcategoryId ?? '') || names.has(book.category) || names.has(book.subcategory ?? '')).length;
+  return books.filter((book) => {
+    const primaryMatches = book.categoryId ? ids.has(book.categoryId) : names.has(book.category);
+    const subcategoryMatches = book.subcategoryId ? ids.has(book.subcategoryId) : names.has(book.subcategory ?? '');
+    return primaryMatches || subcategoryMatches;
+  }).length;
 }
 
 export function CatalogPage() {
@@ -155,12 +164,65 @@ export function CategoriesPage() {
   const { books, categories } = useLibrary();
   const navigate = useNavigate();
   const [selected, setSelected] = useState('');
-  const activeCategories = categories.filter((category) => category.active);
-  const roots = activeCategories.filter((category) => !category.parentId && (!selected || category.id === selected));
   const [collapsedRoots, setCollapsedRoots] = useState<Set<string>>(new Set());
-  return <div className="page categories-page"><PageHeading eyebrow="BIBLIOTECA" title="Categorías y disciplinas" description="Explora la colección por área de conocimiento." /><div className="category-feature"><div className="category-feature-copy"><span className="feature-index">EXPLORAR POR DISCIPLINA</span><h2>Encuentra tu<br />próximo <em>tema.</em></h2><p>Las categorías reflejan la organización actual<br />de tu biblioteca.</p></div><div className="category-feature-art" aria-hidden="true"><Atom size={64} strokeWidth={1} /></div></div>{activeCategories.length > 0 && <div className="category-filter-row"><span>{selected ? `Categoría · ${categories.find((item) => item.id === selected)?.name}` : `${activeCategories.length} categorías`}</span><div className="category-filter-buttons"><button className={!selected ? 'active' : ''} onClick={() => setSelected('')}>Todas</button>{activeCategories.filter((item) => !item.parentId).map((item) => <button key={item.id} className={selected === item.id ? 'active' : ''} onClick={() => setSelected(selected === item.id ? '' : item.id)}>{item.name}</button>)}</div></div>}{roots.length ? <div className="category-tree-grid">{roots.map((root, index) => { const children = activeCategories.filter((item) => item.parentId === root.id); const expanded = !collapsedRoots.has(root.id); return <section className="public-category-group" key={root.id}><div className="public-category-heading"><span className="category-hierarchy-label">Categoría principal</span><button className="category-tree-toggle" aria-expanded={expanded} aria-label={`${expanded ? 'Contraer' : 'Expandir'} ${root.name}`} onClick={() => setCollapsedRoots((current) => { const next = new Set(current); if (next.has(root.id)) next.delete(root.id); else next.add(root.id); return next; })}><ChevronDown size={16} className={expanded ? '' : 'is-collapsed'} />{expanded ? 'Contraer' : 'Expandir'}</button></div><CategoryTile category={root} count={booksInCategory(root, books, categories, true)} index={index} onClick={() => navigate(`/catalog?category=${encodeURIComponent(root.name)}`)} />{expanded && children.length > 0 && <div className="public-category-children">{children.map((child, childIndex) => <div className="public-category-child" key={child.id}><span className="category-hierarchy-branch" aria-hidden="true">↳</span><div className="public-category-child-content"><span className="category-hierarchy-label">Subcategoría de {root.name}</span><CategoryTile category={child} count={booksInCategory(child, books, categories)} index={childIndex} onClick={() => navigate(`/catalog?category=${encodeURIComponent(child.name)}`)} /></div></div>)}</div>}</section>; })}</div> : <EmptyState icon={FolderKanban} title="Aún no hay categorías." description="Las categorías registradas aparecerán aquí cuando se añadan a la biblioteca." />}</div>;
-}
+  const activeCategories = categories.filter((category) => category.active);
+  const activeBooks = books.filter((book) => book.active !== false);
+  const mainCategories = activeCategories.filter((category) => !category.parentId);
+  const roots = mainCategories.filter((category) => !selected || category.id === selected);
 
+  return <div className="page categories-page">
+    <header className="categories-page-heading">
+      <div>
+        <span className="eyebrow"><i />BIBLIOTECA</span>
+        <h1>Explora por disciplinas</h1>
+        <p>Elige un área para encontrar libros y temas relacionados.</p>
+      </div>
+        <div className="categories-total" aria-label={`${activeCategories.length} disciplinas disponibles`}>
+          <strong>{activeCategories.length}</strong>
+          <span>disciplinas</span>
+        </div>
+    </header>
+
+    {activeCategories.length > 0 && <div className="category-filter-row">
+      <span>{roots.length} {roots.length === 1 ? 'área principal' : 'áreas principales'} · {activeCategories.length} disciplinas</span>
+      <div className="category-filter-buttons" role="group" aria-label="Filtrar por área principal">
+        <button className={!selected ? 'active' : ''} aria-pressed={!selected} onClick={() => setSelected('')}>Todas</button>
+        {mainCategories.map((item) => <button key={item.id} className={selected === item.id ? 'active' : ''} aria-pressed={selected === item.id} onClick={() => setSelected(selected === item.id ? '' : item.id)}>{item.name}</button>)}
+      </div>
+    </div>}
+
+    {roots.length ? <div className="category-tree-grid">
+      {roots.map((root, index) => {
+        const children = activeCategories.filter((item) => item.parentId === root.id);
+        const expanded = !collapsedRoots.has(root.id);
+        const childrenId = `subcategories-${root.id}`;
+        return <section className="public-category-group" key={root.id} aria-labelledby={`discipline-${root.id}`}>
+          <div className="public-category-parent">
+            <div className="public-category-heading">
+              <span className="category-hierarchy-label">Área principal</span>
+              {children.length > 0 && <button className="category-tree-toggle" aria-expanded={expanded} aria-controls={childrenId} aria-label={`${expanded ? 'Contraer' : 'Expandir'} subcategorías de ${root.name}`} onClick={() => setCollapsedRoots((current) => {
+                const next = new Set(current);
+                if (next.has(root.id)) next.delete(root.id);
+                else next.add(root.id);
+                return next;
+              })}><ChevronDown size={15} className={expanded ? '' : 'is-collapsed'} /><span>{expanded ? 'Contraer' : 'Expandir'}</span></button>}
+            </div>
+            <div id={`discipline-${root.id}`}>
+              <CategoryTile category={root} count={booksInCategory(root, activeBooks, activeCategories, true)} index={index} icon={FolderKanban} className="category-tile--featured" showDecoration={false} onClick={() => navigate(`/catalog?category=${encodeURIComponent(root.name)}`)} />
+            </div>
+          </div>
+
+          {children.length > 0 && <div className="public-category-subsection" id={childrenId} hidden={!expanded}>
+            <div className="category-subheading"><h2>Subcategorías</h2><span>{children.length}</span></div>
+            <div className="public-category-child-grid">
+              {children.map((child, childIndex) => <CategoryTile key={child.id} category={child} count={booksInCategory(child, activeBooks, activeCategories)} index={childIndex} icon={BookOpen} className="category-tile--child" showDecoration={false} onClick={() => navigate(`/catalog?category=${encodeURIComponent(child.name)}`)} />)}
+            </div>
+          </div>}
+        </section>;
+      })}
+    </div> : <EmptyState icon={FolderKanban} title="Aún no hay categorías." description="Las categorías registradas aparecerán aquí cuando se añadan a la biblioteca." />}
+  </div>;
+}
 export function FavoritesPage() {
   const { books, favorites, loading } = useLibrary();
   const savedBooks = books.filter((book) => favorites.includes(book.id));
