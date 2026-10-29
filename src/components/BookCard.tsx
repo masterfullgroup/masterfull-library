@@ -13,7 +13,7 @@ export default function BookCard({ book, index = 0 }: { book: Book; index?: numb
     <article className="book-card" style={{ animationDelay: `${Math.min(index, 7) * 35}ms` }}>
       <div className="book-card-cover-wrap">
         <Link to={`/book/${book.id}`} className="book-card-cover-link" aria-label={`Ver ${book.title}`}><BookCover book={book} /></Link>
-        <button className={`icon-button cover-save${saved ? ' is-saved' : ''}`} aria-label={saved ? `Quitar ${book.title} de favoritos` : `Guardar ${book.title} en favoritos`} aria-pressed={saved} onClick={() => { toggleFavorite(book.id); toast(saved ? 'Se quitó de favoritos.' : 'Se guardó en favoritos.', 'success'); }}><Heart size={17} fill={saved ? 'currentColor' : 'none'} /></button>
+        <button className={`icon-button cover-save${saved ? ' is-saved' : ''}`} aria-label={saved ? `Quitar ${book.title} de favoritos` : `Guardar ${book.title} en favoritos`} aria-pressed={saved} onClick={async () => { try { await toggleFavorite(book.id); toast(saved ? 'Se quitó de favoritos.' : 'Se guardó en favoritos.', 'success'); } catch { toast('No se pudo actualizar favoritos. Inténtalo de nuevo.', 'warning'); } }}><Heart size={17} fill={saved ? 'currentColor' : 'none'} /></button>
         <span className="cover-format">{book.format}</span>
       </div>
       <div className="book-card-body">
