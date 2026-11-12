@@ -174,18 +174,18 @@ export function CategoriesPage() {
   return <div className="page categories-page">
     <header className="categories-page-heading">
       <div>
-        <span className="eyebrow"><i />BIBLIOTECA</span>
-        <h1>Explora por disciplinas</h1>
-        <p>Elige un área para encontrar libros y temas relacionados.</p>
+        <span className="eyebrow"><i />SISTEMA DE CONOCIMIENTO <span className="categories-heading-divider">/</span> BIBLIOTECA</span>
+        <h1>Explora la biblioteca</h1>
+        <p>Un catálogo organizado para llegar directo a cada área de estudio.</p>
       </div>
         <div className="categories-total" aria-label={`${activeCategories.length} disciplinas disponibles`}>
           <strong>{activeCategories.length}</strong>
-          <span>disciplinas</span>
+          <span>ÁREAS Y TEMAS</span>
         </div>
     </header>
 
     {activeCategories.length > 0 && <div className="category-filter-row">
-      <span>{roots.length} {roots.length === 1 ? 'área principal' : 'áreas principales'} · {activeCategories.length} disciplinas</span>
+      <span><strong>{roots.length.toString().padStart(2, '0')}</strong> {roots.length === 1 ? 'área principal' : 'áreas principales'} <i /> <strong>{activeCategories.length.toString().padStart(2, '0')}</strong> temas</span>
       <div className="category-filter-buttons" role="group" aria-label="Filtrar por área principal">
         <button className={!selected ? 'active' : ''} aria-pressed={!selected} onClick={() => setSelected('')}>Todas</button>
         {mainCategories.map((item) => <button key={item.id} className={selected === item.id ? 'active' : ''} aria-pressed={selected === item.id} onClick={() => setSelected(selected === item.id ? '' : item.id)}>{item.name}</button>)}
