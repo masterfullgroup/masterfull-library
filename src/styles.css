@@ -1317,6 +1317,79 @@ h1, h2, h3, h4, .welcome-row h1, .page-heading h1, .section-heading h2,
 .admin-panel, .settings-section { padding: var(--card-padding); }
 .admin-tabs button.active { color: var(--color-primary); border-color: var(--color-primary); }
 .admin-role-chip { border-color: var(--color-border); color: var(--gold-400); }
+
+/* Masterfull Library 3.0: light dashboard palette inspired by the inventory reference. */
+:root {
+  color-scheme: light;
+  --ink-950: #f3f5f6;
+  --ink-900: #ffffff;
+  --ink-850: #ffffff;
+  --ink-800: #e9eff1;
+  --ink-750: #dce6e9;
+  --paper-100: #263238;
+  --gold-400: #078f99;
+  --gold-500: #087e88;
+  --gold-600: #066d76;
+  --primitive-blue: #069aa4;
+  --color-background: #f3f5f6;
+  --color-foreground: #263238;
+  --color-surface-base: #ffffff;
+  --color-surface-raised: #f7f9fa;
+  --color-surface-overlay: #ffffff;
+  --color-surface-inset: #f1f5f6;
+  --color-primary: #079aa4;
+  --color-primary-hover: #087f88;
+  --color-primary-active: #066d76;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #edf2f3;
+  --color-secondary-hover: #e4edef;
+  --color-secondary-foreground: #34454a;
+  --color-accent-soft: rgb(7 154 164 / 10%);
+  --color-muted: #edf2f3;
+  --color-muted-foreground: #65777c;
+  --color-border: #dce4e6;
+  --color-border-subtle: #e7edef;
+  --color-border-strong: #c9d5d8;
+  --color-focus: #079aa4;
+  --color-accent: #079aa4;
+  --color-accent-hover: #087f88;
+  --color-accent-text: #ffffff;
+  --color-text: #263238;
+  --color-text-secondary: #596b70;
+  --color-text-tertiary: #748489;
+  --color-text-muted: #748489;
+  --color-ring: #079aa4;
+  --font-sans: 'Inter', 'Segoe UI', Arial, sans-serif;
+  --font-display: 'Inter', 'Segoe UI', Arial, sans-serif;
+  --card-shadow: 0 2px 10px rgb(31 55 61 / 7%);
+  --shadow-card: 0 2px 10px rgb(31 55 61 / 7%);
+  --shadow-overlay: 0 12px 32px rgb(31 55 61 / 18%);
+}
+
+html, body { background: var(--color-background); color: var(--color-foreground); }
+.sidebar { background: #ffffff; border-color: var(--color-border); box-shadow: 1px 0 8px rgb(31 55 61 / 4%); }
+.brand-mark { color: var(--color-primary); background: var(--color-accent-soft); border-color: rgb(7 154 164 / 22%); }
+.nav-link { color: var(--color-text-secondary); }
+.nav-link > svg { color: var(--color-text-tertiary); }
+.nav-link:hover { color: var(--color-foreground); background: #f2f6f7; }
+.nav-link.active { color: var(--color-primary); background: var(--color-accent-soft); border-color: rgb(7 154 164 / 15%); }
+.avatar { background: #e7f5f5; border-color: #c6e8e9; color: var(--color-primary); }
+.topbar { background: rgb(255 255 255 / 94%); border-color: var(--color-border); }
+.home-stat-card, .reading-note, .discovery-hero, .category-feature, .category-tile, .book-card,
+.settings-section, .settings-nav button, .admin-panel, .sync-hero-card, .sync-log-panel,
+.admin-summary-card, .detail-cover-frame, .login-panel { box-shadow: var(--card-shadow); }
+.home-stat-icon { border-color: rgb(7 154 164 / 15%); }
+.book-cover, .book-cover-placeholder { background-color: #edf2f3; color: #263238; }
+.cover-atom .book-cover-placeholder { background: #e5f3f4; }
+.cover-numbers .book-cover-placeholder { background: #e8eff8; }
+.cover-orbit .book-cover-placeholder { background: #f0eaf6; }
+.cover-botanical .book-cover-placeholder { background: #eaf3e9; }
+.cover-signal .book-cover-placeholder { background: #f7efe4; }
+.cover-stone .book-cover-placeholder { background: #edf0f2; }
+.cover-grid .book-cover-placeholder { background: #e8f0f3; }
+.cover-light .book-cover-placeholder { background: #f2edf7; }
+.cover-topline, .cover-footer { color: #596b70; }
+.sidebar-help, .filter-select, .sort-select, .view-toggle, .icon-button { background: var(--color-surface-raised); }
 .admin-book-form label { color: var(--color-text-secondary); font-size: 13px; }
 .admin-book-form input:focus-visible, .admin-book-form select:focus-visible, .admin-book-form textarea:focus-visible, .field-wrap:focus-within { border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-accent-soft); }
 .status-toggle.active { background: var(--color-primary); }
